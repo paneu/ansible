@@ -26,7 +26,7 @@ import json
 from io import StringIO
 
 from ansible.compat.tests import unittest
-from ansible.compat.tests.mock import patch, MagicMock
+from ansible.compat.tests.mock import patch, MagicMock, call
 
 from ansible.errors import AnsibleConnectionFailure
 from ansible.playbook.play_context import PlayContext
@@ -153,3 +153,49 @@ class TestConnectionClass(unittest.TestCase):
         with self.assertRaises(AnsibleConnectionFailure) as exc:
             conn.send(b'command', None, None, None)
         self.assertEqual(str(exc.exception), 'ERROR: error message device#')
+
+    def test_network_cli_receive(self):
+        pc = PlayContext()
+        new_stdin = StringIO()
+        conn = network_cli.Connection(pc, new_stdin)
+        mock__terminal = MagicMock()
+        mock__terminal.terminal_stdout_re = [re.compile(b'device#')]
+        #mock__terminal.terminal_stderr_re = [re.compile(b'^ERROR')]
+        conn._terminal = mock__terminal
+
+ 
+        mock__shell = MagicMock()
+        conn._ssh_shell = mock__shell
+
+        command = b'command'
+        prompts = b'prompt'
+        answer = b'y'
+
+        prompt = b"""prompt? 
+command response
+device#
+        """
+
+        mock__shell.recv.return_value = prompt
+
+        output = conn.receive(command, prompts, answer, True, False)
+
+        calls = [call(b'y'), call(b'\r',)]
+
+        mock__shell.sendall.assert_has_calls(calls, any_order=False)
+        self.assertEqual(output, b'prompt? \ncommand response')
+
+        prompt2 = b"""
+prompt? 
+        """
+
+        mock__shell.reset_mock()
+        mock__shell.recv.side_effect = [
+            prompt2,
+            b'\nprompt? '
+        ]
+ 
+
+        with self.assertRaises(AnsibleConnectionFailure) as exc:
+            conn.receive(command, prompts, answer, True, True)
+

@@ -394,11 +394,12 @@ class Connection(ConnectionBase):
         Handles receiving of output from command
         '''
         recv = BytesIO()
-        handled = False
 
         self._matched_prompt = None
         self._matched_cmd_prompt = None
         matched_prompt_window = window_count = 0
+        handled_prompt_bytes = 0
+        last_prompt = -1
 
         while True:
             data = self._ssh_shell.recv(256)
@@ -414,14 +415,16 @@ class Connection(ConnectionBase):
             window = self._strip(recv.read())
             window_count += 1
 
-            if prompts and not handled:
-                handled = self._handle_prompt(window, prompts, answer, newline)
+            if prompts and handled_prompt_bytes < recv.tell():
+                last_prompt = self._handle_prompt(window[handled_prompt_bytes:], prompts, answer, newline, last_prompt)
+                if last_prompt != -1:
+                    handled_prompt_bytes = recv.tell()
                 matched_prompt_window = window_count
-            elif prompts and handled and prompt_retry_check and matched_prompt_window + 1 == window_count:
+            elif prompts and last_prompt != -1 and prompt_retry_check and matched_prompt_window + 1 == window_count:
                 # check again even when handled, if same prompt repeats in next window
                 # (like in the case of a wrong enable password, etc) indicates
                 # value of answer is wrong, report this as error.
-                if self._handle_prompt(window, prompts, answer, newline, prompt_retry_check):
+                if self._handle_prompt(window[handled_prompt_bytes:], prompts, answer, newline, prompt_retry_check, last_prompt):
                     raise AnsibleConnectionFailure("For matched prompt '%s', answer is not valid" % self._matched_cmd_prompt)
 
             if self._find_prompt(window):
@@ -452,7 +455,7 @@ class Connection(ConnectionBase):
             data = regex.sub(b'', data)
         return data
 
-    def _handle_prompt(self, resp, prompts, answer, newline, prompt_retry_check=False):
+    def _handle_prompt(self, resp, prompts, answer, newline, prompt_retry_check=False, last_prompt=-1):
         '''
         Matches the command prompt and responds
 
@@ -462,6 +465,7 @@ class Connection(ConnectionBase):
                 A carriage return is automatically appended to this string.
         :returns: True if a prompt was found in ``resp``.  False otherwise
         '''
+        prompt = 0
         if not isinstance(prompts, list):
             prompts = [prompts]
         prompts = [re.compile(r, re.I) for r in prompts]
@@ -470,13 +474,14 @@ class Connection(ConnectionBase):
             if match:
                 # if prompt_retry_check is enabled to check if same prompt is
                 # repeated don't send answer again.
-                if not prompt_retry_check:
+                if not prompt_retry_check or last_prompt != prompt:
                     self._ssh_shell.sendall(b'%s' % answer)
                     if newline:
                         self._ssh_shell.sendall(b'\r')
                 self._matched_cmd_prompt = match.group()
-                return True
-        return False
+                return prompt
+            prompt += 1
+        return -1
 
     def _sanitize(self, resp, command=None):
         '''

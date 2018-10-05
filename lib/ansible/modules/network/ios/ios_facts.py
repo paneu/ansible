@@ -279,6 +279,7 @@ class Interfaces(FactsBase):
         'show interfaces',
         'show ip interface',
         'show ipv6 interface',
+        'show cdp',
         'show lldp'
     ]
 
@@ -304,6 +305,14 @@ class Interfaces(FactsBase):
             self.populate_ipv6_interfaces(data)
 
         data = self.responses[3]
+        cdp_errs = ['CDP is not enabled']
+
+        if data and not any(err in data for err in cdp_errs):
+            cdp_neighbors = self.run(['show cdp neighbors detail'])
+            if cdp_neighbors:
+                self.facts['cdp_neighbors'] = self.parse_cdp_neighbors(cdp_neighbors[0])
+
+        data = self.responses[4]
         lldp_errs = ['Invalid input', 'LLDP is not enabled']
 
         if data and not any(err in data for err in lldp_errs):
@@ -363,6 +372,23 @@ class Interfaces(FactsBase):
             self.facts['all_ipv4_addresses'].append(address)
         else:
             self.facts['all_ipv6_addresses'].append(address)
+
+    def parse_cdp_neighbors(self, neighbors):
+        facts = dict()
+        for entry in neighbors.split('-------------------------'):
+            if entry == '':
+                continue
+            intf_port = self.parse_cdp_intf_port(entry)
+            if intf_port == None:
+                return facts
+            intf, port = intf_port
+            if intf not in facts:
+                facts[intf] = list()
+            fact = dict()
+            fact['host'] = self.parse_cdp_host(entry)
+            fact['port'] = port
+            facts[intf].append(fact)
+        return facts
 
     def parse_neighbors(self, neighbors):
         facts = dict()
@@ -443,6 +469,16 @@ class Interfaces(FactsBase):
 
     def parse_operstatus(self, data):
         match = re.search(r'^(?:.+) is (.+),', data, re.M)
+        if match:
+            return match.group(1)
+
+    def parse_cdp_intf_port(self, data):
+        match = re.search(r'^Interface: (.+),  Port ID \(outgoing port\): (.+)$', data, re.M)
+        if match:
+            return match.group(1), match.group(2)
+
+    def parse_cdp_host(self, data):
+        match = re.search(r'^Device ID: (.+)$', data, re.M)
         if match:
             return match.group(1)
 

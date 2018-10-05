@@ -78,6 +78,19 @@ class TestIosFactsModule(TestIosModule):
             result['ansible_facts']['ansible_net_interfaces']['Tunnel1110']['macaddress']
         )
 
+    def test_ios_facts_cdp(self):
+        set_module_args(dict(gather_subset='interfaces'))
+        result = self.execute_module()
+        self.assertEqual(
+            result['ansible_facts']['ansible_net_cdp_neighbors'].keys(), [ 'GigabitEthernet1', 'GigabitEthernet3' ]
+        )
+        self.assertEqual(
+            result['ansible_facts']['ansible_net_cdp_neighbors']['GigabitEthernet1'], [ { 'host': 'R2', 'port': 'GigabitEthernet2' }, { 'host': 'R3', 'port': 'GigabitEthernet3' } ]
+        )
+        self.assertEqual(
+            result['ansible_facts']['ansible_net_cdp_neighbors']['GigabitEthernet3'], [ { 'host': 'Rtest', 'port': 'GigabitEthernet1' } ]
+        )
+
     def test_ios_facts_filesystems_info(self):
         set_module_args(dict(gather_subset='hardware'))
         result = self.execute_module()

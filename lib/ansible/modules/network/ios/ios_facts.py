@@ -370,6 +370,8 @@ class Interfaces(FactsBase):
             if entry == '':
                 continue
             intf = self.parse_lldp_intf(entry)
+            if intf == None:
+                return facts
             if intf not in facts:
                 facts[intf] = list()
             fact = dict()

@@ -279,6 +279,7 @@ class Interfaces(FactsBase):
         'show interfaces',
         'show ip interface',
         'show ipv6 interface',
+        'show standby',
         'show cdp',
         'show lldp'
     ]
@@ -305,6 +306,10 @@ class Interfaces(FactsBase):
             self.populate_ipv6_interfaces(data)
 
         data = self.responses[3]
+        if data:
+            self.populate_hsrp_interfaces(data)
+
+        data = self.responses[4]
         cdp_errs = ['CDP is not enabled']
 
         if data and not any(err in data for err in cdp_errs):
@@ -312,7 +317,7 @@ class Interfaces(FactsBase):
             if cdp_neighbors:
                 self.facts['cdp_neighbors'] = self.parse_cdp_neighbors(cdp_neighbors[0])
 
-        data = self.responses[4]
+        data = self.responses[5]
         lldp_errs = ['Invalid input', 'LLDP is not enabled']
 
         if data and not any(err in data for err in lldp_errs):
@@ -372,6 +377,30 @@ class Interfaces(FactsBase):
             self.facts['all_ipv4_addresses'].append(address)
         else:
             self.facts['all_ipv6_addresses'].append(address)
+
+    def populate_hsrp_interfaces(self, data):
+        group_dict = {}
+        for line in data.split('\n'):
+            match = re.search(r'^(\S+) - Group (\d+)', line, re.M)
+            if match:
+                intf = match.group(1)
+                group = match.group(2)
+                try:
+                    group_dict = self.facts['interfaces'][intf]['hsrp'][group] = dict()
+                except KeyError:
+                    self.facts['interfaces'][intf]['hsrp'] = dict()
+                    group_dict = self.facts['interfaces'][intf]['hsrp'][group] = dict()
+            match = re.search(r'\s+State is (.+)', line, re.M)
+            if match:
+                group_dict['state'] = match.group(1)
+            match = re.search(r'\s+Virtual IP address is (.+)', line, re.M)
+            if match:
+                group_dict['virtual_ip'] = match.group(1)
+            match = re.search(r'\s+Secondary virtual IP address (.+)', line, re.M)
+            if match:
+                if not 'secondary_vips' in group_dict:
+                    group_dict['secondary_vips'] = list()
+                group_dict['secondary_vips'].append(match.group(1))
 
     def parse_cdp_neighbors(self, neighbors):
         facts = dict()

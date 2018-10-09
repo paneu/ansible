@@ -335,6 +335,11 @@ class Interfaces(FactsBase):
             primary_address = addresses = []
             primary_address = re.findall(r'Internet address is (.+)$', value, re.M)
             addresses = re.findall(r'Secondary address (.+)$', value, re.M)
+
+            vrf = re.search(r'VPN Routing/Forwarding "(.+)"', value, re.M)
+            if vrf:
+                self.facts['interfaces'][key]['vrf'] = vrf.group(1)
+
             if len(primary_address) == 0:
                 continue
             addresses.append(primary_address[0])
